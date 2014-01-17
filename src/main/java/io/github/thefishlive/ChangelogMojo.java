@@ -13,7 +13,6 @@ import org.apache.maven.project.MavenProjectHelper;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.LogCommand;
-import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.revwalk.RevCommit;
 
 /**
@@ -25,8 +24,6 @@ import org.eclipse.jgit.revwalk.RevCommit;
 public class ChangelogMojo extends AbstractMojo {
 
 	/**
-	 * The user's current project.
-	 *
 	 * @parameter default-value="${project}"
 	 * @required
 	 * @readonly
@@ -35,37 +32,51 @@ public class ChangelogMojo extends AbstractMojo {
 
  	/**
  	 * @component
+	 * @readonly
  	 */
 	MavenProjectHelper projectHelper;
 	
 	/**
-	 * @parameter default-value="${artifactId}-${version}-changelog.txt"
+	 * @parameter default-value="${project.artifactId}-${project.version}-changelog.txt"
+	 * @readonly
 	 */
 	String changelogName;
 	
 	public void execute() throws MojoExecutionException, MojoFailureException {
 		Git git = null;
+		
 		try {
 			git = Git.open(project.getBasedir());
 		} catch (IOException e) {
-			throw new MojoExecutionException("Error initialising the git repo", e);
+			return;
 		}
 		
-		File changelogFile = new File(project.getBasedir() + File.separator + "target" + File.separator + "changelog" + File.separator + changelogName);
+		File changelogFile = new File(project.getBasedir() + File.separator + project.getBuild().getDirectory() + File.separator + "changelog" + File.separator + changelogName);
+		
+		if (!changelogFile.getParentFile().exists()) {
+			try {
+				if (!changelogFile.getParentFile().mkdir()) {
+					throw new IOException("Could not create changelog directory");
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
 		
 		Resource resource = new Resource();
-		resource.setDirectory("." + File.separator + "target" + File.separator + "changelog" + File.separator);
+		resource.setDirectory("." + File.separator + project.getBuild().getDirectory() + File.separator + "changelog" + File.separator);
 		resource.addInclude("*-changelog.txt");
 		project.addResource(resource);
 		
 		LogCommand log = git.log();
 		FileWriter writer = null;
+		
 		try {
 			Iterable<RevCommit> commits = log.call();
 			writer = new FileWriter(changelogFile);
 			
 			for (RevCommit commit : commits) {
-				writer.write(ObjectId.toString(commit.getId()) + "-" + commit.getShortMessage() + "(" + commit.getAuthorIdent().getName() + "<" + commit.getAuthorIdent().getEmailAddress() + ">)\n");
+				writer.write(commit.getShortMessage() + "\n");
 			}
 			
 		} catch (Exception e) {
@@ -80,6 +91,8 @@ public class ChangelogMojo extends AbstractMojo {
 				}
 			}
 		}
+		
+		getLog().info("Generated changelog (" + changelogFile + ")");
 	}
 
 }
